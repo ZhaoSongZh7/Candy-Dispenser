@@ -62,9 +62,9 @@ while cap.isOpened():
             total = mdistance + idistance + rdistance + pdistance + tdistance
 
             if total > 0:
-                print("Closed Palm")
+                cv2.putText(frame, 'Closed Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             else:
-                print("Open Palm")
+                cv2.putText(frame, 'Open Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             
 
     # Display the frame the string is the title
