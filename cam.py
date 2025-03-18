@@ -1,6 +1,21 @@
 import math
 import cv2
 import mediapipe as mp
+import RPi.GPIO as GPIO
+from time import sleep
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(3, GPIO.OUT)
+pwm=GPIO.PWM(3, 50)
+pwm.start(0)
+
+
+def SetAngle(angle):
+    duty = angle / 18 + 2
+    GPIO.output(3, True)
+    pwm.ChangeDutyCycle(duty)
+    sleep(1)
+    GPIO.output(3, False)
+    pwm.ChangeDutyCycle(0)
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
@@ -50,10 +65,14 @@ while cap.isOpened():
                 cv2.putText(frame, 'Closed Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             else:
                 cv2.putText(frame, 'Open Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                SetAngle(90)
+                
 
     cv2.imshow("Candy Dispenser Hand Camera", frame)
     if cv2.waitKey(1) & 0xFF == ord(' '):
         break
 
+pwm.stop()
+GPIO.cleanup()
 cap.release()
 cv2.destroyAllWindows()
