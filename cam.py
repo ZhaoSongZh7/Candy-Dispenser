@@ -1,31 +1,23 @@
-import gpiod
-import time
+import math
 import cv2
 import mediapipe as mp
+from gpiozero import AngularServo
+from time import sleep
 
-# Setup GPIO for PWM (Assuming PWM chip 0, line 0)
-PWM_CHIP = 0  # Might need to change based on your system
-PWM_LINE = 0  # Corresponds to /sys/class/pwm/pwmchip0/pwm0
+servo = AngularServo(14, min_angle=0, max_angle=180, min_pulse_width=0.5/1000, max_pulse_width=2.5/1000)
 
-# Initialize GPIO PWM
-chip = gpiod.Chip(f'/dev/gpiochip{PWM_CHIP}')
-line = chip.get_line(PWM_LINE)
-line.request(consumer="servo", type=gpiod.LINE_REQ_DIR_OUT)
+def set_angle(angle):
+    servo.angle = angle
+    sleep(1)
 
-# Function to move servo
-def move_servo(angle):
-    min_pulse = 1000000  # 1.0ms (0 degrees)
-    max_pulse = 2000000  # 2.0ms (180 degrees)
-    pulse_width = min_pulse + (angle / 180.0) * (max_pulse - min_pulse)
-    with open(f"/sys/class/pwm/pwmchip{PWM_CHIP}/pwm{PWM_LINE}/duty_cycle", "w") as f:
-        f.write(str(int(pulse_width)))
 
-# Initialize MediaPipe
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 hands = mp_hands.Hands(min_detection_confidence=0.9, min_tracking_confidence=0.9)
-
 cap = cv2.VideoCapture(0)
+
+def euclidean_distance(point1, point2):
+    return math.sqrt((point1.x - point2.x) ** 2 + (point1.y - point2.y) ** 2 + (point1.z - point2.z) ** 2)
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -41,6 +33,9 @@ while cap.isOpened():
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             wrist = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST]
+            middle_finger_mcp = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_MCP]
+            index_finger_mcp = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP]
+
             fingertips = [
                 hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP],
                 hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP],
@@ -49,16 +44,24 @@ while cap.isOpened():
                 hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
             ]
 
-            avg_distance = sum([(wrist.x - tip.x) ** 2 + (wrist.y - tip.y) ** 2 for tip in fingertips]) ** 0.5
+            distances = [euclidean_distance(wrist, tip) for tip in fingertips]
 
-            if avg_distance > 0.3:  # Open Palm
-                cv2.putText(frame, 'Open Palm - Dispensing Candy', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                move_servo(90)  # Move servo to dispense
-                time.sleep(1)  # Hold position for 1s
-                move_servo(0)   # Return to original position
+            avg_distance = sum(distances) / len(distances)
+            # Distance check for "Get Closer"
+            print("Middle Finger X: " + str(middle_finger_mcp.x))
+            print("Index Finger X: " + str(index_finger_mcp.x))
+            print("Abs Value X Distance: " + str(abs(middle_finger_mcp.x - index_finger_mcp.x)))
 
+
+            if abs(middle_finger_mcp.x - index_finger_mcp.x) < 0.04:  # Adjust this threshold based on your camera setup
+                cv2.putText(frame, 'Get Closer', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                set_angle(0)
+            elif avg_distance < 0.3:  # Adjust this threshold if needed
+                set_angle(0)
+                cv2.putText(frame, 'Closed Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             else:
-                cv2.putText(frame, 'Closed Palm - No Candy', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                cv2.putText(frame, 'Open Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                set_angle(180)
 
     cv2.imshow("Candy Dispenser Hand Camera", frame)
     if cv2.waitKey(1) & 0xFF == ord(' '):
