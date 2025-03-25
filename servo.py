@@ -3,8 +3,7 @@ import cv2
 import mediapipe as mp
 import math
 import time
-from time import sleep
-from gpiozero import AngularServo
+import gpiod
 
 app = Flask(__name__)
 
@@ -18,15 +17,22 @@ cap = cv2.VideoCapture(0)  # Open USB camera
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
+# Set up GPIO for servo motor
+chip = gpiod.Chip('gpiochip0')  # Default chip
+servo_pin = chip.get_line(18)   # GPIO pin 18 for servo motor (adjust if needed)
+servo_pin.request(consumer='servo_control', type=gpiod.LINE_REQ_DIR_OUT)
+
 # Function to calculate Euclidean distance
 def euclidean_distance(point1, point2):
     return math.sqrt((point1.x - point2.x) ** 2 + (point1.y - point2.y) ** 2 + (point1.z - point2.z) ** 2)
 
-servo = AngularServo(14, min_angle=0, max_angle=180, min_pulse_width=0.5/1000, max_pulse_width=2.5/1000)
-
-def set_angle(angle):
-    servo.angle = angle
-    sleep(1)
+# Function to move the servo motor
+def move_servo(angle):
+    # Convert angle to a PWM duty cycle
+    duty_cycle = (angle / 18) + 2  # Adjust for your servo's specifications
+    servo_pin.set_value(1)  # Activate the servo
+    time.sleep(duty_cycle / 1000)  # Sleep to match the duty cycle
+    servo_pin.set_value(0)  # Deactivate the servo
 
 # Function to generate processed video frames
 def generate_frames():
@@ -66,14 +72,14 @@ def generate_frames():
 
                 # Display text based on hand position
                 if abs(middle_finger_mcp.x - index_finger_mcp.x) < 0.04:
-                    set_angle(0)
                     cv2.putText(frame, 'Get Closer', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                    move_servo(0)  # Stay at 0 degrees if "Get Closer"
                 elif avg_distance < 0.3:
-                    set_angle(0)
                     cv2.putText(frame, 'Closed Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    move_servo(0)  # Stay at 0 degrees for closed palm
                 else:
-                    set_angle(180)
                     cv2.putText(frame, 'Open Palm', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    move_servo(180)  # Move to 180 degrees for open palm
 
         # Calculate FPS
         curr_time = time.time()
